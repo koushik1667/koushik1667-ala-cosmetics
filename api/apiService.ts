@@ -70,6 +70,12 @@ interface RegisterData {
   password: string;
 }
 
+interface OtpData {
+  email: string;
+  otp?: string;
+  name?: string;
+}
+
 // Product API functions
 export const productService = {
   getAllProducts: () => api.get<Product[]>('/products'),
@@ -85,7 +91,9 @@ export const userService = {
   login: (credentials: LoginCredentials) => api.post('/users/login', credentials),
   loginWithGoogle: (googleToken: string) => api.post('/users/google-login', { token: googleToken }),
   registerWithGoogle: (userData: RegisterData) => api.post('/users/google-register', userData),
-  getProfile: () => api.get<User>('/users/profile')
+  getProfile: () => api.get<User>('/users/profile'),
+  sendOtp: (otpData: OtpData) => api.post('/users/send-otp', otpData),
+  verifyOtp: (otpData: OtpData) => api.post('/users/verify-otp', otpData)
 };
 
 // Order API functions

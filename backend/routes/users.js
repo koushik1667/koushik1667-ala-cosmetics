@@ -5,6 +5,9 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 
+// In-memory storage for OTPs (in production, use Redis or database)
+const otpStorage = new Map();
+
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // @route   POST api/users/register
@@ -177,43 +180,110 @@ router.post('/google-login', async (req, res) => {
   }
 });
 
-// @route   POST api/users/google-register
-// @desc    Register user with Google account
+// @route   POST api/users/send-otp
+// @desc    Send OTP to user's email
 // @access  Public
-router.post('/google-register', async (req, res) => {
+router.post('/send-otp', async (req, res) => {
   try {
-    const { name, email, googleId } = req.body;
+    const { email } = req.body;
+    
+    // Validate email
+    if (!email) {
+      return res.status(400).json({ msg: 'Email is required' });
+    }
+    
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Store OTP with expiration (5 minutes)
+    otpStorage.set(email, {
+      otp,
+      expires: Date.now() + 5 * 60 * 1000 // 5 minutes
+    });
+    
+    // In a real application, you would send the OTP via email service
+    // For now, we'll log it to console
+    console.log(`OTP for ${email}: ${otp}`);
+    
+    res.json({ msg: 'OTP sent successfully' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
 
-    // Check if user already exists
+// @route   POST api/users/verify-otp
+// @desc    Verify OTP and login/register user
+// @access  Public
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp, name } = req.body;
+    
+    // Validate inputs
+    if (!email || !otp) {
+      return res.status(400).json({ msg: 'Email and OTP are required' });
+    }
+    
+    // Check if OTP exists and is valid
+    const storedOtp = otpStorage.get(email);
+    if (!storedOtp) {
+      return res.status(400).json({ msg: 'OTP not found or expired' });
+    }
+    
+    // Check expiration
+    if (Date.now() > storedOtp.expires) {
+      otpStorage.delete(email);
+      return res.status(400).json({ msg: 'OTP has expired' });
+    }
+    
+    // Verify OTP
+    if (storedOtp.otp !== otp) {
+      return res.status(400).json({ msg: 'Invalid OTP' });
+    }
+    
+    // OTP is valid, remove it
+    otpStorage.delete(email);
+    
+    // Check if user exists
     let user = await User.findOne({ email });
     
-    if (user) {
-      return res.status(400).json({ msg: 'User already exists' });
+    if (!user) {
+      // Create new user if registering
+      if (!name) {
+        return res.status(400).json({ msg: 'Name is required for registration' });
+      }
+      
+      user = new User({
+        name,
+        email,
+        // No password needed for OTP login
+      });
+      
+      await user.save();
     }
-
-    // Create new user
-    user = new User({
-      name,
-      email,
-      googleId
-    });
-
-    await user.save();
-
+    
     // Return JWT token
     const payload = {
       user: {
         id: user.id
       }
     };
-
+    
     jwt.sign(
       payload,
       process.env.JWT_SECRET || 'default_jwt_secret',
       { expiresIn: '5 days' },
       (err, token) => {
         if (err) throw err;
-        res.json({ token });
+        res.json({ 
+          token,
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role
+          }
+        });
       }
     );
   } catch (err) {
