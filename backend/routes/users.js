@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
-const emailService = require('../services/emailService');
+const emailService = require('../services/emailServiceFallback');
 
 // In-memory storage for OTPs (in production, use Redis or database)
 const otpStorage = new Map();
