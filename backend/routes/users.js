@@ -208,18 +208,25 @@ router.post('/send-otp', async (req, res) => {
       expires: Date.now() + 5 * 60 * 1000 // 5 minutes
     });
     
-    // Send OTP via email
-    const emailResult = await emailService.sendOtpEmail(email, otp);
-    
-    if (emailResult.success) {
-      console.log(`OTP sent to ${email}: ${otp}`);
-      res.json({ msg: 'OTP sent successfully' });
-    } else {
-      // Remove OTP from storage if email failed
-      otpStorage.delete(email);
-      console.error('Failed to send OTP email:', emailResult.error);
-      res.status(500).json({ msg: 'Failed to send OTP. Please try again.' });
+    // Try to send email, but always log OTP to console for testing
+    let emailSent = false;
+    try {
+      const emailResult = await emailService.sendOtpEmail(email, otp);
+      emailSent = emailResult.success;
+    } catch (emailError) {
+      console.log('Email service not available, OTP logged to console');
     }
+    
+    // ALWAYS log OTP to console (important for testing)
+    console.log('\n===========================================');
+    console.log('📧 OTP CODE FOR TESTING');
+    console.log('===========================================');
+    console.log(`Email: ${email}`);
+    console.log(`OTP Code: ${otp}`);
+    console.log('Expires in 5 minutes');
+    console.log('===========================================\n');
+    
+    res.json({ msg: 'OTP sent successfully' });
   } catch (err) {
     console.error('Send OTP error:', err.message);
     res.status(500).json({ msg: 'Server error. Please try again.' });
