@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
+const emailService = require('../services/emailService');
 
 // In-memory storage for OTPs (in production, use Redis or database)
 const otpStorage = new Map();
@@ -192,6 +193,12 @@ router.post('/send-otp', async (req, res) => {
       return res.status(400).json({ msg: 'Email is required' });
     }
     
+    // Rate limiting: Check if user requested OTP recently
+    const storedOtp = otpStorage.get(email);
+    if (storedOtp && Date.now() - (storedOtp.expires - 5 * 60 * 1000) < 60 * 1000) {
+      return res.status(429).json({ msg: 'Please wait before requesting another OTP' });
+    }
+    
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     
@@ -201,14 +208,21 @@ router.post('/send-otp', async (req, res) => {
       expires: Date.now() + 5 * 60 * 1000 // 5 minutes
     });
     
-    // In a real application, you would send the OTP via email service
-    // For now, we'll log it to console
-    console.log(`OTP for ${email}: ${otp}`);
+    // Send OTP via email
+    const emailResult = await emailService.sendOtpEmail(email, otp);
     
-    res.json({ msg: 'OTP sent successfully' });
+    if (emailResult.success) {
+      console.log(`OTP sent to ${email}: ${otp}`);
+      res.json({ msg: 'OTP sent successfully' });
+    } else {
+      // Remove OTP from storage if email failed
+      otpStorage.delete(email);
+      console.error('Failed to send OTP email:', emailResult.error);
+      res.status(500).json({ msg: 'Failed to send OTP. Please try again.' });
+    }
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
+    console.error('Send OTP error:', err.message);
+    res.status(500).json({ msg: 'Server error. Please try again.' });
   }
 });
 
